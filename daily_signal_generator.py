@@ -23,7 +23,7 @@ except Exception:
     openai_client = None
 
 DATA_FILE = "gold_premium_history.json"
-TROY_Ounce_TO_GRAM = 31.1035  # 1 트로이 온스 = 31.1035 그램
+TROY_Ounce_TO_GRAM = 31.1035 # 1 트로이 온스 = 31.1035 그램
 
 # ---------- 헬퍼 함수: Unix 타임스탬프를 KST 문자열로 변환 ----------
 def timestamp_to_kst(timestamp):
@@ -61,28 +61,32 @@ def send_telegram_photo(image_bytes, caption=""):
     response = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", files=files, data=data, timeout=10)
     response.raise_for_status()
 
-# 1. 국내 금 가격 (ACE KRX금현물 ETF, 1g 추종)
+# 1. 국내 금 가격 대용: ACE KRX금현물 ETF 실시간 가격 및 NAV (원/주)
 def get_korean_gold_data():
-    symbol = "411060.KS"  # ⚠️ (수정) 1g 추종 ACE 코드로 변경
+    symbol = "411060.KS"  
     try:
         ticker = yf.Ticker(symbol)
         data = ticker.info
         
-        # yfinance API의 'regularMarketPrice'가 비정상일 수 있으므로
-        # 안정적인 'previousClose' (전일 종가)를 우선 사용합니다.
-        market_price = data.get('previousClose')
-        market_time = data.get('regularMarketTime') # 시간은 참고용으로만 사용
+        market_price = data.get('regularMarketPrice')
+        nav_price = data.get('navPrice')  # ⚠️ (복원) NAV 가격 (원/주)
+        market_time = data.get('regularMarketTime')
         
-        # 'previousClose'가 없는 경우에만 'regularMarketPrice' 시도
+        # 시장 가격이 없으면 직전 종가를 사용
         if market_price is None:
-            market_price = data.get('regularMarketPrice')
+            market_price = data.get('previousClose')
             
         if market_price is None:
-            raise ValueError(f"Yahoo Finance: '{symbol}'의 유효한 시장 가격을 찾을 수 없습니다.")
+             raise ValueError(f"Yahoo Finance: '{symbol}'의 유효한 시장 가격을 찾을 수 없습니다.")
         
-        return market_price, market_time
+        warning_msg = ""
+        # ⚠️ NAV 누락 시, 괴리율 계산을 중단하고 경고 메시지를 반환
+        if nav_price is None:
+             warning_msg = "⚠️ NAV 데이터 누락! 괴리율 계산 불가."
+             
+        return market_price, nav_price, market_time, warning_msg 
     except Exception as e:
-        raise RuntimeError(f"KRX 골드 ETF 가격 조회 실패: {type(e).__name__} - {e}")
+        raise RuntimeError(f"KRX 골드 ETF 가격 및 NAV 조회 실패: {type(e).__name__} - {e}")
 
 # 2. Yahoo Finance 가격 조회 (국제 금, 환율)
 def get_yahoo_price(symbol):
@@ -104,9 +108,10 @@ def get_yahoo_price(symbol):
 def get_gold_and_fx_data():
     usd_krw = get_yahoo_price("USDKRW=X")  # 원/달러 환율
     gold_usd = get_yahoo_price("GC=F")     # 국제 금 (1 온스 당 USD)
-    market_price, market_time = get_korean_gold_data() # 국내 ETF 가격
+    market_price, nav_price, market_time, warning_msg = get_korean_gold_data() 
     
-    return market_price, usd_krw, gold_usd, market_time
+    # ⚠️ (수정) market_price, nav_price, 시간, 경고 메시지 모두 반환
+    return market_price, nav_price, usd_krw, gold_usd, market_time, warning_msg
 
 # ---------- 데이터 처리 및 분석 ----------
 def load_history():
@@ -123,31 +128,25 @@ def save_history(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# (핵심) calc_premium: 이론적 NAV를 1g 기준으로 계산
+# (핵심) calc_premium: NAV를 기준으로 괴리율 계산
 def calc_premium():
-    """
-    국제 금 시세와 환율을 기준으로 1g 이론적 NAV를 계산하고,
-    국내 1g 추종 ETF 시장 가격과 비교하여 프리미엄(괴리율)을 계산합니다.
-    """
-    market_price, usd_krw, gold_usd, market_time = get_gold_and_fx_data()
+    # ⚠️ (수정) NAV 기반 계산에 필요한 모든 데이터 받기
+    market_price, nav_price, usd_krw, gold_usd, market_time, warning_msg = get_gold_and_fx_data()
     
-    # 1. 국제 금 1g당 달러 가격 계산
-    gold_usd_per_gram = gold_usd / TROY_Ounce_TO_GRAM
+    premium = None # NAV가 없으면 None을 반환
     
-    # 2. 국제 금 1g당 원화 가격 계산 (이것이 "이론적 NAV")
-    theoretical_nav_1g = gold_usd_per_gram * usd_krw
-    
-    # 3. 프리미엄(괴리율) 계산: (실제 시장가 / 1g 이론적 NAV) - 1
-    premium = (market_price / theoretical_nav_1g - 1) * 100
+    # ⚠️ (핵심) NAV가 있을 때만 계산: (시장가 / NAV) - 1
+    if nav_price is not None:
+        premium = (market_price / nav_price - 1) * 100 
     
     return {
-        "korean": market_price,           # 국내 ETF 시장가 (원)
-        "international_krw": theoretical_nav_1g, # 국제 금 1g 이론가 (원)
-        "usd_krw": usd_krw,                # 환율 (원/달러)
-        "gold_usd": gold_usd,              # 국제 금 (달러/온스)
-        "premium": premium,              # 괴리율 (%)
-        "market_time": market_time,        # ETF 시장 시간
-        "warning_msg": "✅ 1g 이론적 NAV 기준 (전일 종가 기준)" 
+        "korean": market_price,
+        "international_krw": nav_price if nav_price is not None else market_price, # NAV 없으면 시장가로 대체 (메시지 표시용)
+        "usd_krw": usd_krw,
+        "gold_usd": gold_usd,
+        "premium": premium, # 계산 실패 시 None
+        "market_time": market_time,
+        "warning_msg": warning_msg 
     }
 
 def create_graph(history):
@@ -176,7 +175,7 @@ def analyze_with_ai(today_msg, history):
         return "AI 분석 오류: OpenAI 클라이언트 초기화 실패 (API 키 누락)"
             
     prompt = f"""
-다음은 최근 7일간의 ACE KRX금현물 ETF 괴리율 데이터입니다. (괴리율 = (국내 ETF 가격 / 국제 금 1g 원화환산가) - 1)
+다음은 최근 7일간의 ACE KRX금현물 ETF 괴리율 데이터입니다. (괴리율 = (ETF 시장가 / NAV) - 1)
 {json.dumps(history[-7:], ensure_ascii=False, indent=2)}
 
 오늘의 주요 데이터:
@@ -194,48 +193,87 @@ def analyze_with_ai(today_msg, history):
     except Exception as e:
         return f"AI 분석 오류: {e}"
 
-# (핵심 수정) main: 텍스트 ACE 기준으로 수정
+# (핵심 수정) main: NAV 누락 시 과거 데이터 대체 로직 복원
 def main():
     try:
         today = datetime.date.today().isoformat()
-        
         info = calc_premium()
         history = load_history()
         
         current_premium = info["premium"]
         change = 0.0
-        final_timestamp = info["market_time"]
+        time_str = "" # 최종 출력 시간
         
-        # 유효한 현재 데이터만 히스토리에 저장
-        if history and history[-1]["date"] == today:
-            history[-1] = {"date": today, "premium": round(current_premium, 2)}
+        # 1. 괴리율 계산 실패 (NAV 누락)
+        if current_premium is None:
+            
+            if history:
+                last_valid_data = history[-1]
+                last_valid_premium = last_valid_data["premium"]
+                
+                # 과거 데이터로 대체
+                info["premium"] = last_valid_premium
+                
+                # ⚠️ (수정) 집계 시간은 과거 기록의 시간과 날짜로 설정
+                last_time = last_valid_data.get("time_kst", last_valid_data["date"])
+                time_str = f"과거 ({last_time})"
+                
+                change = 0.0
+                last7 = [x["premium"] for x in history[-7:]]
+                avg7 = sum(last7)/len(last7) if last7 else 0
+                level = "고평가" if info["premium"] > avg7 else "저평가"
+                trend = "--- (과거 기록)"
+                
+                info["warning_msg"] = (
+                    f"{info['warning_msg']} - 과거 기록된 괴리율 ({last_valid_premium:.2f}%) 표시됨."
+                )
+            else:
+                # ⚠️ (수정) 히스토리가 전혀 없는 경우, 0.00%로 강제 설정하고 진행
+                info["premium"] = 0.0
+                change = 0.0
+                time_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S KST')
+                level = "N/A"
+                trend = "N/A"
+                info["warning_msg"] = (
+                    f"{info['warning_msg']} - 기록된 데이터가 없어 괴리율 0.00%로 표시됨."
+                )
+                
+        # 2. 괴리율 계산 성공
         else:
-            history.append({"date": today, "premium": round(current_premium, 2)})
-        
-        save_history(history)
+            # ⚠️ (수정) 최종 집계 시간 문자열 생성 (실시간 데이터)
+            time_str = timestamp_to_kst(info["market_time"])
+            
+            # 히스토리에 저장할 데이터 구성 (시간 정보 포함)
+            new_history_data = {
+                "date": today, 
+                "premium": round(current_premium, 2),
+                "time_kst": time_str # ⚠️ (추가) 시간 정보 저장
+            }
+            
+            # 유효한 현재 데이터만 히스토리에 저장
+            if history and history[-1]["date"] == today:
+                history[-1] = new_history_data
+            else:
+                history.append(new_history_data)
+            
+            save_history(history)
 
-        prev_premium_data = [h for h in history if h["date"] != today]
-        prev = prev_premium_data[-1]["premium"] if prev_premium_data else info["premium"]
-        change = info["premium"] - prev
-        
-        last7 = [x["premium"] for x in history[-7:]]
-        avg7 = sum(last7)/len(last7) if last7 else 0
-        level = "고평가" if info["premium"] > avg7 else "저평가"
-        trend = "📈 상승세" if change > 0 else "📉 하락세"
+            prev_premium_data = [h for h in history if h["date"] != today]
+            prev = prev_premium_data[-1]["premium"] if prev_premium_data else info["premium"]
+            change = info["premium"] - prev
             
-        # 최종 집계 시간 문자열 생성
-        if isinstance(final_timestamp, int):
-            time_str = f"실시간 ({timestamp_to_kst(final_timestamp)})"
-        else:
-            time_str = f"현재 ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S KST')})"
+            last7 = [x["premium"] for x in history[-7:]]
+            avg7 = sum(last7)/len(last7) if last7 else 0
+            level = "고평가" if info["premium"] > avg7 else "저평가"
+            trend = "📈 상승세" if change > 0 else "📉 하락세"
             
-        # 텔레그램 메시지 구성 (ACE 및 1g 기준으로 텍스트 수정)
+        # 텔레그램 메시지 구성
         msg_data = (
             f"📅 {today} ACE KRX금현물 ETF 괴리율 알림\n"
             f"기준 일시: {time_str}\n"
             f"{info['warning_msg']}\n"
             f"국내 ETF 시장가 (주당): {info['korean']:,.0f}원\n"
-            f"국제 금 1g 이론가 (NAV): {info['international_krw']:,.0f}원\n"
+            f"ETF 기준가(NAV) (주당): {info['international_krw']:,.0f}원\n"
             f"국제 금시세 (oz): ${info['gold_usd']:,.2f}\n"
             f"환율: {info['usd_krw']:,.2f}원/$\n"
             f"👉 ETF 괴리율: {info['premium']:+.2f}% ({change:+.2f}% vs 전일)\n"
@@ -253,6 +291,7 @@ def main():
 
     except Exception as e:
         try:
+            # 최종 오류 메시지 전송 시 traceback 포함 (최대 4000자)
             error_msg = f"🔥 치명적인 오류 발생: {type(e).__name__} - {e}\n\n{traceback.format_exc()}"
             send_telegram_text(error_msg[:4000])
         except Exception as telegram_error:
