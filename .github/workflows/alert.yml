@@ -18,8 +18,7 @@ jobs:
       - run: pip install requests
       - run: python alert.py
         env:
-          TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          KRX_BLD_DOM:      ${{ secrets.KRX_BLD_DOM }}
-          KRX_BLD_INTL:     ${{ secrets.KRX_BLD_INTL }}
-          KRX_ISU_CD:       ${{ secrets.KRX_ISU_CD }}
+          KRX_PAYLOAD_DOM:  ${{ secrets.KRX_PAYLOAD_DOM }}
+          KRX_PAYLOAD_INTL: ${{ secrets.KRX_PAYLOAD_INTL }}
