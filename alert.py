@@ -3,11 +3,11 @@
 KRX 금 프리미엄을 매일 계산해 텔레그램으로 보낸다.
 
 필요한 환경변수 (GitHub Secrets):
-  TELEGRAM_TOKEN   BotFather가 준 토큰
-  TELEGRAM_CHAT_ID 내 채팅 ID
-  KRX_BLD_DOM      국내 금현물 조회용 bld 값
-  KRX_BLD_INTL     국제금시세 조회용 bld 값
-  KRX_ISU_CD       금 99.99_1Kg 종목코드
+  TELEGRAM_BOT_TOKEN   BotFather가 준 토큰
+  TELEGRAM_CHAT_ID     내 채팅 ID
+  KRX_BLD_DOM          국내 금현물 조회용 bld 값
+  KRX_BLD_INTL         국제금시세 조회용 bld 값
+  KRX_ISU_CD           금 99.99_1Kg 종목코드
 """
 
 import os
@@ -24,9 +24,9 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 
 def tg(text):
-    tok, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    tok, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not tok or not chat:
-        sys.exit("[중지] TELEGRAM_TOKEN / TELEGRAM_CHAT_ID 가 설정되지 않았습니다.")
+        sys.exit("[중지] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 가 설정되지 않았습니다.")
     r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
                       json={"chat_id": chat, "text": text}, timeout=20)
     if not r.ok:
