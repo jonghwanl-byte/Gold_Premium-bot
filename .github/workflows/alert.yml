@@ -1,0 +1,25 @@
+name: gold-premium-alert
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 20:40 UTC = 다음날 05:40 KST. UTC 일~목 = KST 월~금 아침.
+    # 장 시작(09:00) 전에 전 거래일 종가 기준 프리미엄을 받아본다.
+    - cron: "40 20 * * 0-4"
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - run: python alert.py
+        env:
+          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          KRX_BLD_DOM:      ${{ secrets.KRX_BLD_DOM }}
+          KRX_BLD_INTL:     ${{ secrets.KRX_BLD_INTL }}
+          KRX_ISU_CD:       ${{ secrets.KRX_ISU_CD }}
