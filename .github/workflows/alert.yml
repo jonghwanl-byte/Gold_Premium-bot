@@ -22,3 +22,5 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           KRX_PAYLOAD_DOM:  ${{ secrets.KRX_PAYLOAD_DOM }}
           KRX_PAYLOAD_INTL: ${{ secrets.KRX_PAYLOAD_INTL }}
+          KRX_URL_DOM:      ${{ secrets.KRX_URL_DOM }}
+          KRX_URL_INTL:     ${{ secrets.KRX_URL_INTL }}
