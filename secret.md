@@ -10,3 +10,9 @@ bld=dbms/MDC/STAT/standard/MDCSTAT15001&locale=ko_KR&isuCd=KRD040200002&strtDd=2
 KRX_PAYLOAD_INTL :
 bld=dbms/MDC/STAT/standard/MDCSTAT13901&locale=ko_KR&strtDd=20260814&endDd=20260824&csvxls_isNo=false
 
+KRX_URL_DOM :
+https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201060202
+
+KRX_URL_INTL :
+https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201060202
+
