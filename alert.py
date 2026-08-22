@@ -7,7 +7,7 @@ KRX 금 프리미엄을 매일 계산해 텔레그램으로 보낸다.
 그래야 KRX 화면마다 다른 파라미터 이름을 추측하지 않아도 된다.
 
 필요한 GitHub Secrets:
-  TELEGRAM_TOKEN    BotFather 토큰
+  TELEGRAM_BOT_TOKEN    BotFather 토큰
   TELEGRAM_CHAT_ID  내 채팅 ID
   KRX_PAYLOAD_DOM   개별종목 시세 추이 화면의 요청 본문 전체
   KRX_PAYLOAD_INTL  국제금시세 동향 화면의 요청 본문 전체
@@ -38,9 +38,9 @@ DATE_KEYS = ["TRD_DD", "BAS_DD", "TRD_YMD"]
 
 
 def tg(text):
-    tok, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    tok, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not tok or not chat:
-        sys.exit("[중지] TELEGRAM_TOKEN / TELEGRAM_CHAT_ID 미설정")
+        sys.exit("[중지] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 미설정")
     r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
                       json={"chat_id": chat, "text": text}, timeout=20)
     print("텔레그램:", "전송 완료" if r.ok else f"실패 {r.status_code} {r.text[:200]}")

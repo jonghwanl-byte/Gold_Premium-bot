@@ -112,7 +112,7 @@ Settings → Secrets and variables → Actions → New repository secret
 
 | 이름 | 값 |
 |---|---|
-| `TELEGRAM_TOKEN` | BotFather 토큰 |
+| `TELEGRAM_BOT_TOKEN` | BotFather 토큰 |
 | `TELEGRAM_CHAT_ID` | 위에서 확인한 숫자 |
 | `KRX_BLD_DOM` | 개별종목 시세 추이 bld |
 | `KRX_BLD_INTL` | 국제금시세 동향 bld |
