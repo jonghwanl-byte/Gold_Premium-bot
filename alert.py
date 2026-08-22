@@ -11,6 +11,8 @@ KRX 금 프리미엄을 매일 계산해 텔레그램으로 보낸다.
   TELEGRAM_CHAT_ID  내 채팅 ID
   KRX_PAYLOAD_DOM   개별종목 시세 추이 화면의 요청 본문 전체
   KRX_PAYLOAD_INTL  국제금시세 동향 화면의 요청 본문 전체
+  KRX_URL_DOM       개별종목 시세 추이 화면의 주소창 URL (menuId 포함)
+  KRX_URL_INTL      국제금시세 동향 화면의 주소창 URL (menuId 포함)
 
 요청 본문 복사법:
   F12 → Network → Fetch/XHR → 조회 클릭 → getJsonData.cmd 클릭
@@ -66,32 +68,46 @@ def build_payload(raw):
     return d
 
 
+DEFAULT_PAGE = "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"
+
+
 def make_session():
-    """KRX는 세션 쿠키가 없으면 LOGOUT 을 반환한다.
-       데이터 요청 전에 페이지를 먼저 방문해 쿠키를 받아둔다."""
+    """KRX는 세션 쿠키만으로는 부족하고, 해당 화면을 실제로 열어본 세션이어야
+       그 화면의 bld 요청을 받아준다. 그래서 메인 -> 조회화면 순으로 방문한다."""
     s = requests.Session()
     s.headers.update({
         "User-Agent": UA,
         "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
     })
-    for url in ("https://data.krx.co.kr/",
-                "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"):
-        try:
-            r = s.get(url, timeout=20)
-            print(f"  세션 준비 {url} -> HTTP {r.status_code}", file=sys.stderr)
-        except Exception as e:                       # noqa: BLE001
-            print(f"  세션 준비 실패 {url}: {e}", file=sys.stderr)
-        time.sleep(0.5)
-    print(f"  획득한 쿠키: {list(s.cookies.keys()) or '없음'}", file=sys.stderr)
+    try:
+        r = s.get("https://data.krx.co.kr/", timeout=20)
+        print(f"  세션 준비 메인 -> HTTP {r.status_code}", file=sys.stderr)
+    except Exception as e:                           # noqa: BLE001
+        print(f"  세션 준비 실패: {e}", file=sys.stderr)
+    time.sleep(0.5)
     return s
 
 
-def krx(sess, raw, label):
+def open_page(sess, url, label):
+    """조회 화면을 실제로 방문해 해당 bld 를 세션에 등록시킨다."""
+    url = (url or DEFAULT_PAGE).strip()
+    try:
+        r = sess.get(url, timeout=20)
+        print(f"  [{label}] 화면 방문 -> HTTP {r.status_code}  "
+              f"쿠키 {list(sess.cookies.keys())}", file=sys.stderr)
+    except Exception as e:                           # noqa: BLE001
+        print(f"  [{label}] 화면 방문 실패: {e}", file=sys.stderr)
+    time.sleep(1.0)
+    return url
+
+
+def krx(sess, raw, label, page_url=None):
     payload = build_payload(raw)
+    referer = open_page(sess, page_url, label)
     headers = {
         "X-Requested-With": "XMLHttpRequest",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "Referer": "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd",
+        "Referer": referer,
         "Origin": "https://data.krx.co.kr",
     }
     last = None
@@ -119,12 +135,11 @@ def krx(sess, raw, label):
             time.sleep(3 * (k + 1))
             if "LOGOUT" in str(e):
                 sess.cookies.clear()
-                for url in ("https://data.krx.co.kr/",
-                            "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"):
-                    try:
-                        sess.get(url, timeout=20)
-                    except Exception:                # noqa: BLE001, S110
-                        pass
+                try:
+                    sess.get("https://data.krx.co.kr/", timeout=20)
+                except Exception:                    # noqa: BLE001, S110
+                    pass
+                open_page(sess, page_url, label)
     raise RuntimeError(f"{label} 조회 실패: {last}")
 
 
@@ -143,9 +158,11 @@ def latest(rows, label):
 def main():
     try:
         sess = make_session()
-        dom = krx(sess, os.environ["KRX_PAYLOAD_DOM"], "국내")
+        dom = krx(sess, os.environ["KRX_PAYLOAD_DOM"], "국내",
+                  os.environ.get("KRX_URL_DOM"))
         time.sleep(1)
-        itl = krx(sess, os.environ["KRX_PAYLOAD_INTL"], "국제")
+        itl = krx(sess, os.environ["KRX_PAYLOAD_INTL"], "국제",
+                  os.environ.get("KRX_URL_INTL"))
         d1, k, ck = latest(dom, "국내")
         d2, i, ci = latest(itl, "국제")
         print(f"국내 {d1} {k:,.0f} ({ck}) / 국제 {d2} {i:,.0f} ({ci})")
