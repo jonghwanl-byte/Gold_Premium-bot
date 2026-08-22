@@ -66,19 +66,46 @@ def build_payload(raw):
     return d
 
 
-def krx(raw, label):
+def make_session():
+    """KRX는 세션 쿠키가 없으면 LOGOUT 을 반환한다.
+       데이터 요청 전에 페이지를 먼저 방문해 쿠키를 받아둔다."""
+    s = requests.Session()
+    s.headers.update({
+        "User-Agent": UA,
+        "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+    })
+    for url in ("https://data.krx.co.kr/",
+                "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"):
+        try:
+            r = s.get(url, timeout=20)
+            print(f"  세션 준비 {url} -> HTTP {r.status_code}", file=sys.stderr)
+        except Exception as e:                       # noqa: BLE001
+            print(f"  세션 준비 실패 {url}: {e}", file=sys.stderr)
+        time.sleep(0.5)
+    print(f"  획득한 쿠키: {list(s.cookies.keys()) or '없음'}", file=sys.stderr)
+    return s
+
+
+def krx(sess, raw, label):
     payload = build_payload(raw)
-    headers = {"User-Agent": UA, "X-Requested-With": "XMLHttpRequest",
-               "Referer": "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"}
+    headers = {
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Referer": "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd",
+        "Origin": "https://data.krx.co.kr",
+    }
     last = None
     for k in range(3):
         try:
-            r = requests.post(KRX_URL, data=payload, headers=headers, timeout=30)
-            if r.status_code != 200:
-                # 서버가 뭐라고 하는지 로그에 남긴다 - 진단의 핵심
+            r = sess.post(KRX_URL, data=payload, headers=headers, timeout=30)
+            body = r.text.strip()
+            if r.status_code != 200 or body.upper().startswith("LOGOUT"):
                 print(f"  [{label}] HTTP {r.status_code}\n"
                       f"  보낸 키: {sorted(payload)}\n"
-                      f"  응답: {r.text[:400]}", file=sys.stderr)
+                      f"  쿠키: {list(sess.cookies.keys())}\n"
+                      f"  응답: {body[:400]}", file=sys.stderr)
+                if body.upper().startswith("LOGOUT"):
+                    raise RuntimeError("세션 만료(LOGOUT). 쿠키 재발급 후 재시도")
                 r.raise_for_status()
             js = r.json()
             rows = js.get("output") or js.get("OutBlock_1") or js.get("block1") or []
@@ -90,6 +117,14 @@ def krx(raw, label):
             last = e
             print(f"  [{label}] 재시도 {k+1}/3: {e}", file=sys.stderr)
             time.sleep(3 * (k + 1))
+            if "LOGOUT" in str(e):
+                sess.cookies.clear()
+                for url in ("https://data.krx.co.kr/",
+                            "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"):
+                    try:
+                        sess.get(url, timeout=20)
+                    except Exception:                # noqa: BLE001, S110
+                        pass
     raise RuntimeError(f"{label} 조회 실패: {last}")
 
 
@@ -107,9 +142,10 @@ def latest(rows, label):
 
 def main():
     try:
-        dom = krx(os.environ["KRX_PAYLOAD_DOM"], "국내")
+        sess = make_session()
+        dom = krx(sess, os.environ["KRX_PAYLOAD_DOM"], "국내")
         time.sleep(1)
-        itl = krx(os.environ["KRX_PAYLOAD_INTL"], "국제")
+        itl = krx(sess, os.environ["KRX_PAYLOAD_INTL"], "국제")
         d1, k, ck = latest(dom, "국내")
         d2, i, ci = latest(itl, "국제")
         print(f"국내 {d1} {k:,.0f} ({ck}) / 국제 {d2} {i:,.0f} ({ci})")
