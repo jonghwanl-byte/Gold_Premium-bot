@@ -1,0 +1,40 @@
+name: 재앵커링
+
+# 실행법: Actions 탭 -> 재앵커링 -> Run workflow ->
+#         goldkimp 프리미엄 값 입력 -> 초록 버튼
+# 파일을 직접 고칠 필요 없음.
+
+on:
+  workflow_dispatch:
+    inputs:
+      premium:
+        description: "goldkimp.com 등에서 확인한 현재 프리미엄 (%). 예: -0.03, 1.24"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  reanchor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+
+      - name: 앵커 재설정
+        run: python etf_premium.py --reanchor "${{ inputs.premium }}"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: anchor.json 커밋
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add anchor.json
+          git diff --staged --quiet || git commit -m "재앵커링: 프리미엄 ${{ inputs.premium }}%"
+          git push

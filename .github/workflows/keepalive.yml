@@ -1,12 +1,13 @@
 name: keepalive
 
-# GitHub은 60일간 커밋이 없는 리포의 schedule 워크플로를 자동 비활성화한다.
-# 알림 봇이 조용히 멈추는 걸 막기 위해 2주마다 빈 커밋을 남긴다.
+# GitHub은 60일간 커밋이 없는 리포의 schedule 을 자동 비활성화한다.
+# 알림 봇이 조용히 멈추는 걸 막는다. (알림이 매일 로그를 커밋하므로
+# 사실상 예비 장치지만, 알림이 며칠 실패해도 안전하도록 남겨둔다.)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 1,15 * *"      # 매달 1일 / 15일 03:00 UTC (12:00 KST)
+    - cron: "0 3 1,15 * *"
 
 permissions:
   contents: write
@@ -16,9 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: 빈 커밋 남기기
-        run: |
+      - run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit --allow-empty -m "keepalive: $(date -u +%Y-%m-%d)"

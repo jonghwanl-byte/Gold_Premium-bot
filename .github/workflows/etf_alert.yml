@@ -1,0 +1,35 @@
+name: 금프리미엄 알림
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 20:40 UTC = 다음날 05:40 KST. UTC 일~목 = KST 월~금 아침.
+    - cron: "40 20 * * 0-4"
+
+permissions:
+  contents: write        # premium_log.csv 커밋용
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+
+      - name: 프리미엄 계산 및 발송
+        run: python etf_premium.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: 기록 커밋
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add premium_log.csv || true
+          git diff --staged --quiet || git commit -m "log: $(date -u +%Y-%m-%d)"
+          git push || true
