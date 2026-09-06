@@ -1,8 +1,8 @@
 {
-  "date": "2026-09-04",
-  "ratio": 1.026828,
-  "premium": -0.03,
-  "source": "goldkimp 16:00 / NAV 기준",
-  "tiger_nav": 13002.86,
-  "kodex_nav": 12663.13
+  "date": "2026-09-06",
+  "ratio": 1.02685,
+  "premium": 1.74,
+  "source": "수동 재앵커링",
+  "tiger_nav": 13003.0,
+  "kodex_nav": 12663.0
 }
